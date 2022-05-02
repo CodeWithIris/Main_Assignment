@@ -1,0 +1,279 @@
+---
+title: "Main_Assignment"
+author: "Yan Zhu"
+date: "4/30/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+# Reading and Understanding the Data
+```{r}
+data_all<-read.csv('./analysis.csv')
+head(data_all)
+#summary(data_all)
+str(data_all)
+```
+
+# Question 1: Part a
+```{r}
+data_all<-read.csv('./analysis.csv')
+new_data<-data_all[,c('White.Player_ID', 'White.ACPL')]
+data<-subset(new_data,White.Player_ID == 2 | White.Player_ID == 8)
+data$White.Player_ID <- factor(data$White.Player_ID)
+dim(data)
+head(data)
+library(ggplot2)
+library(MCMCpack)
+ggplot(data) + geom_boxplot(aes(White.Player_ID, White.ACPL, fill = White.Player_ID)) + geom_jitter(aes(White.Player_ID, White.ACPL, shape = data$White.Player_ID))
+tapply(data$White.ACPL, data$White.Player_ID, mean)
+tapply(data$White.ACPL, data$White.Player_ID, median)
+tapply(data$White.ACPL, data$White.Player_ID, sd)
+t.test(White.ACPL ~ White.Player_ID, data=data, var.equal = TRUE)
+```
+
+```{r}
+data_all<-read.csv('./analysis.csv')
+new_data<-data_all[,c('White.Player', 'White.ACPL')]
+data<-subset(new_data,White.Player =='Anand, Viswanathan' | White.Player == 'Carlsen, Magnus')
+library(ggplot2)
+library(MCMCpack)
+mu <- mean(data[,2])
+sd <- sd(data[,2])
+compare_gibbs <- function(y, ind, mu0 = 50, tau0 = 1/400, del0 = 0, gamma0 = 1/400, a0 = 1, b0 = 50, maxiter = 5000)
+{
+y1 <- y[ind == 1]
+y2 <- y[ind == 2]
+
+n1 <- length(y1) 
+n2 <- length(y2)
+
+##### starting values
+mu <- (mean(y1) + mean(y2)) / 2
+del <- (mean(y1) - mean(y2)) / 2
+
+mat_store <- matrix(0, nrow = maxiter, ncol = 3)
+#####
+
+##### Gibbs sampler
+an <- a0 + (n1 + n2)/2
+
+for(s in 1 : maxiter) 
+{
+  
+  ##update tau
+  bn <- b0 + 0.5 * (sum((y1 - mu - del) ^ 2) + sum((y2 - mu + del) ^ 2))
+  tau <- rgamma(1, an, bn)
+  ##
+  
+  ##update mu
+  taun <-  tau0 + tau * (n1 + n2)
+  mun <- (tau0 * mu0 + tau * (sum(y1 - del) + sum(y2 + del))) / taun
+  mu <- rnorm(1, mun, sqrt(1/taun))
+  ##
+  
+  ##update del
+  gamman <-  gamma0 + tau*(n1 + n2)
+  deln <- ( del0 * gamma0 + tau * (sum(y1 - mu) - sum(y2 - mu))) / gamman
+  del<-rnorm(1, deln, sqrt(1/gamman))
+  ##
+  
+  ## store parameter values
+  mat_store[s, ] <- c(mu, del, tau)
+}
+colnames(mat_store) <- c("mu", "del", "tau")
+return(mat_store)
+}
+data$White.Player[data$White.Player == 'Anand, Viswanathan'] = 1
+data$White.Player[data$White.Player == 'Carlsen, Magnus'] = 2
+fit <- compare_gibbs(data$White.ACPL, as.factor(data$White.Player))
+acf(as.mcmc(fit))
+#fit <- compare_2_gibbs(data$White.ACPL, as.factor(data$White.Player), mu, mu/2,  0,  mu/2, mu^2/sd, mu/sd, 5000)
+#fit <- compare_2_gibbs(data$White.ACPL, as.factor(data$White.Player), sd^2, 1/400,  0,  1/400, sd^2,400*sd^2, 5000)
+#fit<- compare_2_gibbs(data$White.ACPL, as.factor(data$White.Player), 50, 1/400, 0, 1/400, 100, 50, maxiter = 5000)
+
+plot(as.mcmc(fit))
+raftery.diag(as.mcmc(fit))
+apply(fit, 2, mean)
+apply(fit, 2, sd)
+y1_sim <- rnorm(5000, fit[, 1] + fit[, 2], sd = 1/sqrt(fit[, 3]))
+y2_sim <- rnorm(5000, fit[, 1] - fit[, 2], sd = 1/sqrt(fit[, 3]))
+
+ggplot(data.frame(y_sim_diff = y1_sim - y2_sim)) + stat_bin(aes(y_sim_diff))
+mean(y1_sim > y2_sim)
+ggplot(data.frame(y1_sim, y2_sim)) + geom_point(aes(y1_sim, y2_sim), alpha = 0.3) + geom_abline(slope = 1, intercept = 0)
+```
+
+# Question 1: Part b
+```{r}
+data_all<-read.csv('./analysis.csv')
+data<-data_all[,c('White.Player_ID', 'White.ACPL')]
+dim(data)
+summary(data)
+```
+
+```{r}
+data_all<-read.csv('./analysis.csv')
+data<-data_all[,c('White.Player_ID', 'White.ACPL')]
+data$White.Player_ID <- factor(data$White.Player_ID)
+library(ggplot2)
+ggplot(data) + geom_boxplot(aes(x = reorder(White.Player_ID, White.ACPL, median), White.ACPL, 
+                               fill = reorder(White.Player_ID, White.ACPL, median)), show.legend=FALSE)
+ggplot(data, aes(x = reorder(White.Player_ID, White.Player_ID, length))) + stat_count()
+ggplot(data, aes(White.ACPL)) + stat_bin()
+ggplot(data.frame(size = tapply(data$White.ACPL, data$White.Player_ID, length), 
+                  mean_ACPL = tapply(data$White.ACPL, data$White.Player_ID, mean)), 
+       aes(size, mean_ACPL)) + geom_point()
+mean(data[,2])
+sd(data[,2])
+```
+```{r}
+data_all<-read.csv('./analysis.csv')
+data_<-data_all[,c('White.Player_ID', 'White.ACPL')]
+data_$White.Player_ID <- factor(data_$White.Player_ID)
+library(ggplot2)
+library(MCMCpack)
+compare_gibbs_2 <- function(y, ind, maxiter = 5000)
+{
+  
+### weakly informative priors
+a0 <- 1 ; b0 <- 400 ## tau_w hyperparameters
+eta0 <-1; t0 <- 400 ## tau_b hyperparameters
+mu0<-20 ; gamma0 <- 1/25
+###
+
+### starting values
+m <- nlevels(ind)
+ybar <- theta <- tapply(y, ind, mean)
+tau_w <- mean(1 / tapply(y, ind, var)) ##within group precision
+mu <- mean(theta)
+tau_b <-var(theta) ##between group precision
+n_m <- tapply(y, ind, length)
+an <- a0 + sum(n_m)/2
+###
+
+### setup MCMC
+theta_mat <- matrix(0, nrow=maxiter, ncol=m)
+mat_store <- matrix(0, nrow=maxiter, ncol=3)
+###
+
+### MCMC algorithm
+for(s in 1:maxiter) 
+{
+  
+  # sample new values of the thetas
+  for(j in 1:m) 
+  {
+    taun <- n_m[j] * tau_w + tau_b
+    thetan <- (ybar[j] * n_m[j] * tau_w + mu * tau_b) / taun
+    theta[j]<-rnorm(1, thetan, 1/sqrt(taun))
+  }
+  
+  #sample new value of tau_w
+  ss <- 0
+  for(j in 1:m){
+    ss <- ss + sum((y[ind == j] - theta[j])^2)
+  }
+  bn <- b0 + ss/2
+  tau_w <- rgamma(1, an, bn)
+  
+  #sample a new value of mu
+  gammam <- m * tau_b + gamma0
+  mum <- (mean(theta) * m * tau_b + mu0 * gamma0) / gammam
+  mu <- rnorm(1, mum, 1/ sqrt(gammam)) 
+  
+  # sample a new value of tau_b
+  etam <- eta0 + m/2
+  tm <- t0 + sum((theta - mu)^2) / 2
+  tau_b <- rgamma(1, etam, tm)
+  
+  #store results
+  theta_mat[s,] <- theta
+  mat_store[s, ] <- c(mu, tau_w, tau_b)
+}
+colnames(mat_store) <- c("mu", "tau_w", "tau_b")
+return(list(params = mat_store, theta = theta_mat))
+}
+fit2 <- compare_gibbs_2(data_$White.ACPL, data_$White.Player_ID)
+plot(as.mcmc(fit2$params))
+## reformat samples for ggplot
+theta_df <- data.frame(samples = as.numeric(fit2$theta), 
+                       White.Player_ID = rep(1:ncol(fit2$theta), each = nrow(fit2$theta))) 
+
+theta_med <- apply(theta_df, 2, mean) ## get basic posterior summary
+sort(theta_med, decreasing = TRUE) ## which schools did best and worst?
+ggplot(theta_df) + geom_boxplot(aes(x = reorder(White.Player_ID, samples, median), samples, 
+                               fill = reorder(White.Player_ID, samples, median)), show.legend=FALSE)
+theta_hat <- apply(fit2$theta, 2, mean)
+ggplot(data.frame(size = tapply(data_$White.ACPL, data_$White.Player_ID, length), theta_hat = theta_hat), aes(size, theta_hat)) + geom_point()
+```
+# Question 2: Part a
+```{r}
+data_all<-read.csv('./analysis.csv')
+df<-data_all[,c('Combined.ACPL', 'Year')]
+d<-aggregate(df$Combined.ACPL,list(df$Year),mean)
+d<-as.data.frame.array(d)
+names(d)[1]<-'Year'
+names(d)[2]<-'Combined.ACPL'
+summary(d)
+d
+#data_True<-subset(data,PreDeepBlue =='TRUE')
+#data_False<-subset(data,PreDeepBlue =='FALSE')
+cor(df)
+#pairs(subset(df, select = c(Year,PreDeepBlue)))
+plot(Combined.ACPL ~ Year, data = df) ## is there much evidence of a relationship?
+boxplot(Combined.ACPL ~ Year, data = df) ## is there much evidence of sex having an effect?
+```
+
+```{r}
+lm1 <- lm(Combined.ACPL~Year + log(Year) + Year^2 + Year^3, d)
+summary(lm1)
+step_AIC_backward <- step(lm1)
+step_AIC_forward <- step(lm(Combined.ACPL~1, data = d), direction = "forward", scope = list(upper = lm1))
+step_AIC_backward ## Results are the same, but notice that variables are in a different order.
+step_AIC_forward
+```
+
+```{r}
+lm2 <-lm(Combined.ACPL~Year + log(Year), data = d) ## interaction terms
+summary(lm2)
+plot(lm2, which = 2)
+yhat <- predict(lm2)
+plot(yhat, df$Combined.ACPL)
+```
+```{r}
+predict(lm2, newdata=data.frame('Year' = c(2022,2023,2024,2025,2026,2027,2028,2029,2030,2031)))
+```
+
+# Question 2: Part b
+```{r}
+data_all<-read.csv('./analysis.csv')
+df<-data_all[,c('Combined.ACPL', 'PreDeepBlue', 'Year')]
+data_True<-subset(df,PreDeepBlue =='TRUE')
+data_True<-aggregate(data_True$Combined.ACPL,list(data_True$Year),mean)
+data_True<-as.data.frame.array(data_True)
+names(data_True)[1]<-'Year'
+names(data_True)[2]<-'Combined.ACPL'
+data_False<-subset(df,PreDeepBlue =='FALSE')
+data_False<-aggregate(data_False$Combined.ACPL,list(data_False$Year),mean)
+data_False<-as.data.frame.array(data_False)
+names(data_False)[1]<-'Year'
+names(data_False)[2]<-'Combined.ACPL'
+#cor(df)
+pairs(subset(df, select = c(Year,PreDeepBlue)))
+plot(Combined.ACPL ~ Year, data = d) ## is there much evidence of a relationship?
+df$Year <- factor(as.numeric(df$Year))
+boxplot(Combined.ACPL ~ Year, data = d) ## is there much evidence of sex having an effect?
+summary(data_True)
+summary(data_False)
+sd(data_True[,1])
+sd(data_False[,1])
+```
+
+```{r}
+predict(lm2, newdata=data.frame('Year' = c(2000,2004,2008,2012,2016,2021)))
+```
